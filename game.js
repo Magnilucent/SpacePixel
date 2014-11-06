@@ -37,8 +37,20 @@ function initGame() {
 	// Spawn player ship
 	new Ship(1000, 1000, 0, 1, "#3FC380", true);
 
+	// Spawn team ship
+	new Ship(950, 900, 0, 1, "#3FC380", false);
+
+	// Spawn team ship
+	new Ship(950, 800, 0, 1, "#3FC380", false);
+
 	// Spawn enemy ship
 	new Ship(950, 1200, 1, 1, "#FF0000", false);
+
+	// Spawn enemy ship
+	new Ship(950, 1300, 1, 1, "#FF0000", false);
+
+	// Spawn enemy ship
+	new Ship(950, 1400, 1, 1, "#FF0000", false);
 
 	// Set the canvas to the correct size
 	c.setAttribute('width', viewport.width);
@@ -129,9 +141,6 @@ function Ship (x, y, team, size, color, isPlayer) {
 	// Used by AI. Whatever it is trying to kill.
 	this.focus;
 
-	// AI takes 5 steps to become aware of a change
-	this.reactionTime = 5;
-
 	// Used to center the ship when it is being drawn
 	this.center = 0;
 	if (this.size > 1) {
@@ -177,15 +186,17 @@ function Ship (x, y, team, size, color, isPlayer) {
 		} else {
 			// AI handling
 
-			// Find enemy if needed
-			if (typeof this.focus == 'undefined') {
-				this.focus = this.findNearestEnemy();
+			var nearest = this.findNearestShip(3);
+			if (typeof nearest !== 'undefined') {
+				// If the nearest ship happens to be an enemy set it to the focus
+				if (nearest.team !== this.team)
+					this.focus = nearest;
 			}
 
-			// Handle enemy fighting
-			if (typeof this.focus !== 'undefined') {
+			// Handle avoiding ship colision
+			if (typeof nearest !== 'undefined') {
 				// Angle to enemy ship
-				var angle = getAngle(this.x, this.y, this.focus.x, this.focus.y);
+				var angle = getAngle(this.x, this.y, nearest.x, nearest.y);
 
 				// Differance between the ship's direction and angle to enemy
 				var difference =  this.direction - angle;
@@ -199,11 +210,46 @@ function Ship (x, y, team, size, color, isPlayer) {
 					}
 				}
 
+				var distance = getDistance(this.x, this.y, nearest.x, nearest.y);
+				//console.log(distance);
+				if (distance < 40) {
+					this.direction += this.turnSpeed * sign(difference);
+					console.log("avoiding");
+					this.focus = undefined;
+				}
+
+			}
+
+
+			// Find enemy if needed
+			if (typeof this.focus == 'undefined') {
+				this.focus = this.findNearestShip(this.team);
+			}
+
+			// Handle enemy fighting
+			if (typeof this.focus !== 'undefined') {
+				// Angle to enemy ship
+				var angle = getAngle(this.x, this.y, this.focus.x, this.focus.y);
+
+				// Differance between the ship's direction and angle to enemy
+				var difference =  this.direction - angle;
+
+				var distance = getDistance(this.x, this.y, this.focus.x, this.focus.y);
+
+				// Find shortest path to correct angle
+				if (Math.abs(difference) > 180) {
+					if (this.direction > angle) {
+						difference = -1 * ((360 - this.direction) + angle);
+					} else {
+						difference = (360 - angle) + this.direction;
+					}
+				}
+
 				// Activated when ship is moving to assault enemy ship
-				if (getDistance(this.x, this.y, this.focus.x, this.focus.y) < 100 && Math.abs(difference) < 30) {
+				if (distance < 100 && Math.abs(difference) < 30) {
 					// Slow down behind the enemy and maych speed
 					if (this.speed > this.focus.speed) {
-						this.speed -= 0.2;
+						this.speed -= 0.3;
 						if (this.speed < this.focus.speed)
 							this.speed = this.focus.speed;
 					}
@@ -213,7 +259,7 @@ function Ship (x, y, team, size, color, isPlayer) {
 				}
 
 				// Activated when enemy ship is close BEHIND ship
-				if ( Math.abs(difference) > 120 && getDistance(this.x, this.y, this.focus.x, this.focus.y) < 150) {
+				if ( Math.abs(difference) > 120 && distance < 150) {
 					// Causes the ship to follow a S shaped path
 					this.direction += this.turnSpeed * sign(difference);
 				}else if ( Math.abs(difference) > 10 ) {
@@ -242,29 +288,38 @@ function Ship (x, y, team, size, color, isPlayer) {
 		this.y += Math.sin(this.direction * (Math.PI/180) )*this.speed;
 
 		// Make a breadcrumb trail
-		if ( (steps / (3) ) == Math.round(steps / (3) )) {
-			new Breadcrumb(this.x, this.y, this.size, "white", 2*30);
+		if ( (steps / (5) ) == Math.round(steps / (5) )) {
+			if (this.isPlayer)
+				new Breadcrumb(this.x, this.y, this.size, "white", 30*2);
+			else
+				new Breadcrumb(this.x, this.y, this.size, "grey", 30*2);
 		}
 	};
 
 
-	this.findNearestEnemy = function () {
-		var closest ;
-		for (i = 0; i < teams.length; i++) {
-			if (i == team) {
-				continue;
-			}else{
-				teams[i].forEach ( function(enemy) {
-					if ( typeof closest == 'undefined' ){
-						closest = enemy;
-					} else if ( getDistance(this.x, this.y, enemy.x, enemy.y) < 
-								getDistance(this.x, this.y, closest.x, closest.y)) {
-						closest = enemy;
-					}
-				});
-			}
+	// Finds the closest ship, with the option of filtering a team
+	this.findNearestShip = function (filterTeam) {
+		var closest;
+
+		if (typeof filterTeam == 'undefined') {
+			filterTeam = -1;
 		}
 
+		for (i = 0; i < teams.length; i++) {
+			if (typeof teams[i] == 'undefined' || i == filterTeam)
+				continue;
+
+			teams[i].forEach ( function(ship) {
+				if (ship !== this) {
+					if ( typeof closest == 'undefined' ){
+						closest = ship;
+					} else if ( getDistance(this.x, this.y, ship.x, ship.y) < 
+								getDistance(this.x, this.y, closest.x, closest.y)) {
+						closest = ship;
+					}
+				}
+			}.bind(this));
+		}
 		return closest;
 	}
 
@@ -279,6 +334,14 @@ function Ship (x, y, team, size, color, isPlayer) {
 		ships.splice(ships.indexOf(this), 1);
 		teams[team].splice(teams[team].indexOf(this), 1);
 	};
+}
+
+/**************************************
+* The ship handles both the player
+* and AI ships.
+***************************************/
+function Rocket (x, y, team, size, color, isPlayer) {
+
 }
 
 /********************************************************
